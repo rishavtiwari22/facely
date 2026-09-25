@@ -71,6 +71,13 @@ const authLimiter = rateLimit({
 
 app.use(globalLimiter);
 
+// ── Normalize URLs ────────────────────────────────────────────────────────────
+// Removes double slashes like //api/auth -> /api/auth
+app.use((req, res, next) => {
+    req.url = req.url.replace(/\/{2,}/g, '/');
+    next();
+});
+
 // ── Health Check ──────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
     res.json({ message: "Facely API is running.", timestamp: new Date().toISOString() });
