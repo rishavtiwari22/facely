@@ -143,7 +143,7 @@ export default function Attendance({ user }) {
             return new faceapi.LabeledFaceDescriptors(student._id, descriptors);
           });
 
-          const matcher = new faceapi.FaceMatcher(labeledDescriptors, 0.55);
+          const matcher = new faceapi.FaceMatcher(labeledDescriptors, 0.60);
           setFaceMatcher(matcher);
           setStatus('Active');
         }, 100);
@@ -201,7 +201,7 @@ export default function Attendance({ user }) {
         if (!result.error && result.descriptor) {
           const bestMatch = faceMatcher.findBestMatch(new Float32Array(result.descriptor));
 
-          if (bestMatch.label !== 'unknown' && bestMatch.distance < 0.55) {
+          if (bestMatch.label !== 'unknown' && bestMatch.distance < 0.60) {
             const matchedStudent = students.find(s => s._id === bestMatch.label);
             if (matchedStudent) {
               if (!recentDetections.current.has(matchedStudent._id)) {

@@ -286,9 +286,9 @@ export default function Register() {
                     ref={webcamRef}
                     audio={false}
                     screenshotFormat="image/jpeg"
-                    videoConstraints={{ facingMode: "user" }}
+                    videoConstraints={{ facingMode: "user", aspectRatio: 1 }}
                     onUserMediaError={() => setCameraError(true)}
-                    className="object-cover w-full h-full transform scale-x-[-1]" 
+                    className="absolute inset-0 w-full h-full object-cover transform scale-x-[-1]" 
                   />
                   {isCapturing && (
                     <motion.div 
