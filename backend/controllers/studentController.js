@@ -98,11 +98,21 @@ exports.getAllStudents = async (req, res) => {
         let query = Student.find(queryObj);
         
         // Exclude massive embeddings array by default to speed up Home page loading
-        if (req.query.includeEmbeddings !== 'true') {
+        console.log("req.url:", req.url);
+        console.log("req.query.includeEmbeddings:", req.query.includeEmbeddings, "type:", typeof req.query.includeEmbeddings);
+        if (String(req.query.includeEmbeddings) !== 'true') {
+            console.log("Excluding embeddings!");
             query = query.select('-embeddings');
+        } else {
+            console.log("Including embeddings!");
         }
         
         const students = await query;
+        console.log("QueryObj:", queryObj);
+        console.log("Students count:", students.length);
+        if (students.length > 0) {
+            console.log("First student has embeddings:", !!students[0].embeddings, "length:", students[0].embeddings?.length);
+        }
         res.json(students);
     } catch (error) {
         console.error("Error fetching students:", error);

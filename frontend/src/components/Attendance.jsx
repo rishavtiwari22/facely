@@ -129,7 +129,11 @@ export default function Attendance({ user }) {
       setMarkedRecords(initialMarked);
       markedRecordsRef.current = initialMarked;
 
+      console.log("DEBUG studentsData received from API:", studentsData);
+      
       const validStudents = studentsData.filter(s => s.embeddings && s.embeddings.length > 0);
+      console.log("DEBUG validStudents count:", validStudents.length);
+      
       if (validStudents.length > 0) {
         setStatus('Building Face Matcher...');
         // Add slight delay so UI doesn't freeze harshly
