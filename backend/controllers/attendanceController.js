@@ -7,12 +7,12 @@ const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
 const redisOptions = { enableOfflineQueue: false, maxRetriesPerRequest: 0, retryStrategy: () => null };
 const redisClient = new Redis(redisUrl, redisOptions);
 
-redisClient.on("error", () => {});
+redisClient.on("error", () => { });
 
 exports.markAttendance = async (req, res) => {
     try {
         const { studentId, confidence, markedBy, slot } = req.body;
-        
+
         if (!studentId || confidence == null || slot == null) {
             return res.status(400).json({ error: "Student ID, confidence, and slot are required." });
         }
@@ -41,7 +41,7 @@ exports.markAttendance = async (req, res) => {
         });
 
         await newAttendance.save();
-        
+
         // Emit socket event (req.io is attached in server.js)
         if (req.io) {
             req.io.emit("attendance:marked", {
@@ -66,7 +66,7 @@ exports.markAttendance = async (req, res) => {
 exports.bulkMarkAttendance = async (req, res) => {
     try {
         const { records } = req.body; // Array of { studentId, confidence, markedBy, time }
-        
+
         if (!Array.isArray(records) || records.length === 0) {
             return res.status(400).json({ error: "Valid records array is required." });
         }
@@ -77,14 +77,14 @@ exports.bulkMarkAttendance = async (req, res) => {
         const studentIds = records.map(r => r.studentId);
         const students = await Student.find({ _id: { $in: studentIds } }).select('campus');
         const campusMap = new Map(students.map(s => [s._id.toString(), s.campus]));
-        
+
         const configs = await CampusConfig.find();
         const configMap = new Map(configs.map(c => [c.campusName, c]));
 
         const validRecords = records.filter(record => {
             const campus = campusMap.get(record.studentId);
             if (!campus) return false;
-            
+
             const config = configMap.get(campus);
             if (!config || !Array.isArray(config.slots) || config.slots.length === 0) return true; // allow defaults
 
@@ -128,9 +128,9 @@ exports.bulkMarkAttendance = async (req, res) => {
             req.io.emit("attendance:bulk_marked", { count: insertedDocs.length });
         }
 
-        res.status(201).json({ 
-            message: `Successfully processed bulk attendance. ${insertedDocs.length} new records added.`, 
-            count: insertedDocs.length 
+        res.status(201).json({
+            message: `Successfully processed bulk attendance. ${insertedDocs.length} new records added.`,
+            count: insertedDocs.length
         });
     } catch (error) {
         console.error("Error in bulk mark attendance:", error);
@@ -142,7 +142,7 @@ exports.getAttendance = async (req, res) => {
     try {
         const { date, studentClass, campus, slot } = req.query;
         let query = {};
-        
+
         if (date) {
             query.date = String(date);
         }
@@ -155,9 +155,9 @@ exports.getAttendance = async (req, res) => {
 
         // We need to populate the studentId first to filter by campus if provided
         const records = await Attendance.find(query).populate('studentId', 'name rollNo class campus schoolEmail');
-        
+
         let filteredRecords = records.filter(record => record.studentId); // Remove null references
-        
+
         if (campus) {
             filteredRecords = filteredRecords.filter(record => record.studentId.campus === campus);
         }
@@ -170,7 +170,7 @@ exports.getAttendance = async (req, res) => {
         const studentQuery = {};
         if (campus) studentQuery.campus = String(campus);
         if (studentClass) studentQuery.class = String(studentClass);
-        
+
         const totalEnrolled = await Student.countDocuments(studentQuery);
 
         res.json({
@@ -186,16 +186,16 @@ exports.getAttendance = async (req, res) => {
 exports.getDashboardAggregate = async (req, res) => {
     try {
         const dateString = req.query.date || new Date().toISOString().split("T")[0];
-        
+
         let campusFilter = null;
         if (req.user && req.user.role === 'staff' && req.user.campus) {
             campusFilter = req.user.campus;
         }
 
-        const cacheKey = campusFilter 
-            ? `dashboard_aggregate_${dateString}_${campusFilter}` 
+        const cacheKey = campusFilter
+            ? `dashboard_aggregate_${dateString}_${campusFilter}`
             : `dashboard_aggregate_${dateString}_global`;
-        
+
         // Try Cache First
         const cachedData = await redisClient.get(cacheKey).catch(() => null);
         if (cachedData) {
@@ -223,7 +223,7 @@ exports.getDashboardAggregate = async (req, res) => {
         };
 
         // Cache for 2 seconds (short TTL for high concurrency read optimization)
-        await redisClient.set(cacheKey, JSON.stringify(responseData), "EX", 2).catch(() => {});
+        await redisClient.set(cacheKey, JSON.stringify(responseData), "EX", 2).catch(() => { });
 
         res.json(responseData);
     } catch (error) {
@@ -237,10 +237,10 @@ exports.deleteAttendance = async (req, res) => {
         if (!req.user || req.user.role !== 'superadmin') {
             return res.status(403).json({ error: "Only super admins can delete attendance records." });
         }
-        
+
         const { id } = req.params;
         const deletedRecord = await Attendance.findByIdAndDelete(id);
-        
+
         if (!deletedRecord) {
             return res.status(404).json({ error: "Attendance record not found." });
         }
@@ -249,7 +249,7 @@ exports.deleteAttendance = async (req, res) => {
         if (req.io) {
             req.io.emit("attendance:marked"); // emit generic event to trigger refetch
         }
-        
+
         res.json({ message: "Attendance deleted successfully." });
     } catch (error) {
         console.error("Error deleting attendance:", error);
@@ -291,7 +291,7 @@ exports.manualMarkAttendance = async (req, res) => {
         });
 
         await newAttendance.save();
-        
+
         if (req.io) {
             req.io.emit("attendance:marked"); // emit generic event to trigger refetch
         }

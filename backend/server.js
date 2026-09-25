@@ -25,9 +25,16 @@ process.on("unhandledRejection", (reason, promise) => {
 connectDB();
 
 const server = http.createServer(app);
+
+const frontendUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/$/, '') : 'http://localhost:5173';
+
 const io = new Server(server, {
     cors: {
-        origin: [process.env.FRONTEND_URL || 'http://localhost:5173', 'http://localhost:5173'],
+        origin: [
+            frontendUrl,
+            'http://localhost:5173',
+            'https://facely-three.vercel.app'
+        ],
         methods: ["GET", "POST"],
         credentials: true
     }
