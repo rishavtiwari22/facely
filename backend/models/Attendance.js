@@ -28,10 +28,15 @@ const attendanceSchema = new mongoose.Schema({
     type: String,
     enum: ['face', 'manual'],
     default: 'face'
+  },
+  slot: {
+    type: Number,
+    required: true,
+    default: 1
   }
 });
 
-// Index on studentId and date for fast lookups
-attendanceSchema.index({ studentId: 1, date: 1 }, { unique: true });
+// Index on studentId, date, and slot for fast lookups
+attendanceSchema.index({ studentId: 1, date: 1, slot: 1 }, { unique: true });
 
 module.exports = mongoose.model('Attendance', attendanceSchema);

@@ -10,12 +10,19 @@ export default function Register() {
   const navigate = useNavigate();
   const webcamRef = useRef(null);
   const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [formData, setFormData] = useState({ name: '', rollNo: '', studentClass: '' });
+  const [formData, setFormData] = useState({ 
+    name: '', 
+    schoolEmail: '',
+    campus: '',
+    rollNo: '', 
+    studentClass: '' 
+  });
   const [status, setStatus] = useState('');
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cameraError, setCameraError] = useState(false);
+  const [availableCampuses, setAvailableCampuses] = useState([]);
 
   // For capturing 5 embeddings
   const [embeddings, setEmbeddings] = useState([]);
@@ -30,11 +37,28 @@ export default function Register() {
         setError('Failed to load face detection models.');
       }
     };
+    const fetchConfigs = async () => {
+      try {
+        const token = localStorage.getItem('adminToken');
+        const res = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:5555'}/api/config`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setAvailableCampuses(res.data);
+      } catch (err) {
+        console.error("Failed to load configs", err);
+      }
+    };
     init();
+    fetchConfigs();
   }, []);
 
   const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    if (name === 'campus') {
+      setFormData({ ...formData, campus: value, studentClass: '' });
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
     setError(null);
   };
 
@@ -84,15 +108,18 @@ export default function Register() {
     setStatus('Submitting registration...');
     
     try {
+      const token = localStorage.getItem('adminToken');
       const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:5555'}/api/students/register`, {
         ...formData,
         embeddings
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
       });
       
       setSuccess(`Registration successful for ${response.data.student.name}!`);
       setTimeout(() => setSuccess(null), 4000);
       setStatus('');
-      setFormData({ name: '', rollNo: '', studentClass: '' });
+      setFormData({ name: '', schoolEmail: '', campus: '', rollNo: '', studentClass: '' });
       setEmbeddings([]);
     } catch (err) {
       setError(err.response?.data?.error || 'Registration failed. Please try again.');
@@ -134,6 +161,35 @@ export default function Register() {
               onChange={handleInputChange}
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">School Email</label>
+            <input
+              type="email"
+              name="schoolEmail"
+              required
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all font-medium text-slate-900 placeholder-slate-400"
+              placeholder="e.g. jane.doe@school.edu"
+              value={formData.schoolEmail}
+              onChange={handleInputChange}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Campus</label>
+            <select
+              name="campus"
+              required
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all font-medium text-slate-900"
+              value={formData.campus}
+              onChange={handleInputChange}
+            >
+              <option value="" disabled>Select a campus</option>
+              {availableCampuses.map(c => (
+                <option key={c._id} value={c.campusName}>{c.campusName}</option>
+              ))}
+            </select>
+          </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div>
@@ -149,16 +205,42 @@ export default function Register() {
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Class / Section</label>
-              <input
-                type="text"
-                name="studentClass"
-                required
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all font-medium text-slate-900 placeholder-slate-400"
-                placeholder="e.g. Year 3 A"
-                value={formData.studentClass}
-                onChange={handleInputChange}
-              />
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                {formData.campus === 'Eternal Campus' ? 'Class' : 'School'}
+              </label>
+              {(() => {
+                const selectedCampusConfig = availableCampuses.find(c => c.campusName === formData.campus);
+                
+                if (selectedCampusConfig && Array.isArray(selectedCampusConfig.classes) && selectedCampusConfig.classes.length > 0) {
+                  return (
+                    <select
+                      name="studentClass"
+                      required
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all font-medium text-slate-900"
+                      value={formData.studentClass}
+                      onChange={handleInputChange}
+                    >
+                      <option value="" disabled>Select Class/School</option>
+                      {selectedCampusConfig.classes.map((className, idx) => (
+                        <option key={idx} value={className}>{className}</option>
+                      ))}
+                    </select>
+                  );
+                }
+
+                // Fallback for campuses without classes defined
+                return (
+                  <input
+                    type="text"
+                    name="studentClass"
+                    required
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all font-medium text-slate-900 placeholder-slate-400"
+                    placeholder="e.g. BCA-I or SOP"
+                    value={formData.studentClass}
+                    onChange={handleInputChange}
+                  />
+                );
+              })()}
             </div>
           </div>
 
@@ -191,7 +273,7 @@ export default function Register() {
             </span>
           </div>
           
-          <div className="relative bg-slate-900 rounded-2xl overflow-hidden flex-1 min-h-[400px] shadow-inner flex items-center justify-center border-4 border-slate-50 ring-1 ring-slate-200">
+          <div className="relative bg-slate-900 rounded-2xl overflow-hidden w-full aspect-square max-h-[500px] mx-auto shadow-inner flex items-center justify-center border-4 border-slate-50 ring-1 ring-slate-200">
             {modelsLoaded ? (
               cameraError ? (
                 <div className="text-slate-400 text-center p-6 flex flex-col items-center">

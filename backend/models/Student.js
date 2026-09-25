@@ -5,10 +5,18 @@ const studentSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  rollNo: {
+  schoolEmail: {
     type: String,
     required: true,
     unique: true
+  },
+  campus: {
+    type: String,
+    required: true
+  },
+  rollNo: {
+    type: String,
+    required: true
   },
   class: {
     type: String,
@@ -21,5 +29,8 @@ const studentSchema = new mongoose.Schema({
 }, {
   timestamps: true // adds createdAt and updatedAt
 });
+
+// A roll number should be unique within a specific campus
+studentSchema.index({ campus: 1, rollNo: 1 }, { unique: true });
 
 module.exports = mongoose.model('Student', studentSchema);
