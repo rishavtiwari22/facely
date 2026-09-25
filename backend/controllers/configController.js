@@ -18,13 +18,15 @@ exports.updateConfig = async (req, res) => {
             return res.status(400).json({ error: "campusName and slots array are required." });
         }
 
+        const sanitizedCampusName = String(campusName).trim();
+
         // Sanitize classes array
         const sanitizedClasses = Array.isArray(classes)
             ? classes.map(c => String(c).trim()).filter(Boolean)
             : [];
 
         const updatedConfig = await CampusConfig.findOneAndUpdate(
-            { campusName },
+            { campusName: sanitizedCampusName },
             { 
                 slots, 
                 classes: sanitizedClasses
