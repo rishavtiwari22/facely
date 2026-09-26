@@ -30,3 +30,19 @@ export const getFaceDescriptor = async (videoElement) => {
     return { error: error.message || 'An error occurred', descriptor: null };
   }
 };
+export const getAllFaces = async (videoElement) => {
+  try {
+    const detections = await faceapi.detectAllFaces(
+      videoElement,
+      new faceapi.TinyFaceDetectorOptions()
+    ).withFaceLandmarks().withFaceDescriptors();
+
+    return detections.map(d => ({
+      box: d.detection.box,
+      descriptor: d.descriptor
+    }));
+  } catch (error) {
+    console.error("Face detection error:", error);
+    return [];
+  }
+};
