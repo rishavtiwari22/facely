@@ -152,7 +152,7 @@ export default function Attendance({ user }) {
             return new faceapi.LabeledFaceDescriptors(student._id, descriptors);
           });
 
-          const matcher = new faceapi.FaceMatcher(labeledDescriptors, 0.70);
+          const matcher = new faceapi.FaceMatcher(labeledDescriptors, 0.50);
           setFaceMatcher(matcher);
           setStatus('Active');
         }, 100);
