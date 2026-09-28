@@ -280,10 +280,37 @@ export default function Dashboard({ user }) {
           <motion.div
             key="loading"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="flex flex-col items-center justify-center py-20"
+            className="bg-white shadow-sm rounded-3xl overflow-hidden border border-slate-100"
           >
-            <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
-            <p className="text-slate-500 font-medium">Loading unified dashboard...</p>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-100">
+                <thead className="bg-slate-50/50">
+                  <tr>
+                    <th className="px-6 py-4"><div className="h-4 w-24 bg-slate-200 rounded animate-pulse"></div></th>
+                    <th className="px-6 py-4"><div className="h-4 w-20 bg-slate-200 rounded animate-pulse"></div></th>
+                    <th className="px-6 py-4"><div className="h-4 w-16 bg-slate-200 rounded animate-pulse"></div></th>
+                    <th className="px-6 py-4"><div className="h-4 w-20 bg-slate-200 rounded animate-pulse"></div></th>
+                    <th className="px-6 py-4"><div className="h-4 w-32 bg-slate-200 rounded animate-pulse"></div></th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-slate-50">
+                  {[...Array(5)].map((_, i) => (
+                    <tr key={i}>
+                      <td className="px-6 py-5 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-slate-200 animate-pulse" />
+                          <div className="h-4 w-32 bg-slate-200 rounded animate-pulse" />
+                        </div>
+                      </td>
+                      <td className="px-6 py-5 whitespace-nowrap"><div className="h-4 w-24 bg-slate-200 rounded animate-pulse" /></td>
+                      <td className="px-6 py-5 whitespace-nowrap"><div className="h-4 w-16 bg-slate-200 rounded animate-pulse" /></td>
+                      <td className="px-6 py-5 whitespace-nowrap"><div className="h-4 w-24 bg-slate-200 rounded animate-pulse" /></td>
+                      <td className="px-6 py-5 whitespace-nowrap"><div className="h-8 w-48 bg-slate-200 rounded-xl animate-pulse" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </motion.div>
         ) : filteredStudents.length === 0 ? (
           <motion.div
@@ -339,9 +366,19 @@ export default function Dashboard({ user }) {
                       );
 
                       // Support both dynamic slot configs and legacy fallback (1 slot default)
-                      const slotsToRender = campusConfig && Array.isArray(campusConfig.slots) && campusConfig.slots.length > 0
-                        ? campusConfig.slots
+                      let slotsToRender = campusConfig && Array.isArray(campusConfig.slots) && campusConfig.slots.length > 0
+                        ? [...campusConfig.slots]
                         : [{ slotNumber: 1, name: 'Slot 1' }];
+
+                      // Inject archived slots that exist in records but not in config
+                      records.forEach(r => {
+                         if (!slotsToRender.find(s => s.slotNumber === r.slot)) {
+                            slotsToRender.push({ slotNumber: r.slot, name: `Archived Slot ${r.slot}` });
+                         }
+                      });
+                      
+                      // Sort by slot number to keep UI clean
+                      slotsToRender.sort((a, b) => a.slotNumber - b.slotNumber);
 
                       const options = { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false };
                       const istTimeStr = new Intl.DateTimeFormat('en-GB', options).format(new Date());

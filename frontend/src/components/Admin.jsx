@@ -297,8 +297,20 @@ export default function Admin({ user, setAuthStatus }) {
       </div>
 
       {loading ? (
-        <div className="h-64 flex items-center justify-center">
-          <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 space-y-4">
+          <div className="h-8 w-48 bg-slate-200 rounded-lg animate-pulse mb-6" />
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="flex items-center justify-between p-4 border border-slate-100 rounded-2xl">
+              <div className="flex items-center gap-4">
+                 <div className="w-12 h-12 bg-slate-200 rounded-xl animate-pulse" />
+                 <div className="space-y-2">
+                    <div className="h-5 w-32 bg-slate-200 rounded animate-pulse" />
+                    <div className="h-4 w-24 bg-slate-200 rounded animate-pulse" />
+                 </div>
+              </div>
+              <div className="h-10 w-28 bg-slate-200 rounded-xl animate-pulse" />
+            </div>
+          ))}
         </div>
       ) : (
         <AnimatePresence mode="wait">

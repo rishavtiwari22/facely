@@ -89,8 +89,17 @@ exports.bulkMarkAttendance = async (req, res) => {
             if (!config || !Array.isArray(config.slots) || config.slots.length === 0) return true; // allow defaults
 
             // Verify the selected slot actually exists in the campus configuration
-            const slotExists = config.slots.find(s => s.slotNumber === record.slot);
-            return !!slotExists;
+            const slotObj = config.slots.find(s => s.slotNumber === record.slot);
+            if (!slotObj) return false;
+
+            if (slotObj.startTime && slotObj.endTime) {
+                const options = { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false };
+                const recordTimeStr = new Intl.DateTimeFormat('en-GB', options).format(new Date(record.time || new Date()));
+                if (recordTimeStr < slotObj.startTime || recordTimeStr > slotObj.endTime) {
+                    return false; // Time is outside the slot window
+                }
+            }
+            return true;
         });
 
         if (validRecords.length === 0) {

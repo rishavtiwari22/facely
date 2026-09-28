@@ -1,10 +1,11 @@
 import { BrowserRouter as Router, Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { useState } from 'react'
-import { Toaster } from 'react-hot-toast'
+import { useState, useEffect } from 'react'
+import axios from 'axios'
+import toast, { Toaster } from 'react-hot-toast'
 import { GoogleOAuthProvider, googleLogout } from '@react-oauth/google'
 import { Users, UserPlus, Camera, LayoutDashboard, Settings, X, ArrowLeft, ShieldAlert, LogOut, FlaskConical } from 'lucide-react'
+import ErrorBoundary from './components/ErrorBoundary'
 import Admin from './components/Admin'
-import TestPage from './components/TestPage'
 import Register from './components/Register'
 import Attendance from './components/Attendance'
 import Dashboard from './components/Dashboard'
@@ -39,6 +40,56 @@ function AppContent() {
     setAuthStatus({ token: null, user: null });
     navigate('/login');
   };
+
+  // Global Axios Interceptor for Render Cold Starts
+  useEffect(() => {
+    let isWakingUp = false;
+    let wakeToastId = null;
+
+    const resInterceptor = axios.interceptors.response.use(
+      (response) => {
+        if (isWakingUp && wakeToastId) {
+          toast.dismiss(wakeToastId);
+          toast.success("Server is awake!", { id: 'awake' });
+          isWakingUp = false;
+        }
+        return response;
+      },
+      async (error) => {
+        // Handle 401 Unauthorized (Expired Token)
+        if (error.response?.status === 401) {
+          toast.error("Session expired. Please log in again.", { id: 'session-expired' });
+          handleLogout();
+          return Promise.reject(error);
+        }
+
+        // Handle 502 Bad Gateway or Network Errors typically seen during Render cold starts
+        if (error.response?.status === 502 || error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') {
+          const config = error.config;
+          config.__retryCount = config.__retryCount || 0;
+          
+          if (config.__retryCount < 6) { // Retry up to 6 times (30 seconds)
+            config.__retryCount += 1;
+            
+            if (!isWakingUp) {
+               isWakingUp = true;
+               wakeToastId = toast.loading("Waking up the server, this might take up to a minute...", { id: 'waking-up' });
+            }
+            
+            // Wait 5 seconds before retrying
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            
+            return axios(config);
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      axios.interceptors.response.eject(resInterceptor);
+    };
+  }, []);
 
   const navLinkClass = ({ isActive }) =>
     `flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-200 font-medium text-sm ${
@@ -124,14 +175,6 @@ function AppContent() {
                     <div className="fixed inset-0 z-40" onClick={() => setIsSettingsOpen(false)} />
                     {/* Dropdown */}
                     <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50">
-                      <NavLink
-                        to="/test"
-                        onClick={() => setIsSettingsOpen(false)}
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-                      >
-                        <FlaskConical className="w-4 h-4 text-indigo-500" />
-                        Face Detection Test
-                      </NavLink>
                       {authStatus.user && (
                         <button
                           onClick={() => { handleLogout(); setIsSettingsOpen(false); }}
@@ -180,10 +223,6 @@ function AppContent() {
                   Admin Panel
                 </NavLink>
               )}
-              <NavLink to="/test" className={mobileMenuLinkClass} onClick={() => setIsMobileMenuOpen(false)}>
-                <Settings className="w-5 h-5" />
-                Dev Tools
-              </NavLink>
               {authStatus.user && (
                 <button onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium text-base text-rose-500 hover:bg-rose-50 hover:text-rose-600`}>
                   <LogOut className="w-5 h-5" />
@@ -225,8 +264,6 @@ function AppContent() {
               <Admin user={authStatus.user} setAuthStatus={setAuthStatus} />
             </ProtectedRoute>
           } />
-          
-          <Route path="/test" element={<TestPage />} />
         </Routes>
       </main>
     </div>
@@ -236,11 +273,13 @@ function AppContent() {
 function App() {
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "PLACEHOLDER_CLIENT_ID";
   return (
-    <GoogleOAuthProvider clientId={googleClientId}>
-      <Router>
-        <AppContent />
-      </Router>
-    </GoogleOAuthProvider>
+    <ErrorBoundary>
+      <GoogleOAuthProvider clientId={googleClientId}>
+        <Router>
+          <AppContent />
+        </Router>
+      </GoogleOAuthProvider>
+    </ErrorBoundary>
   )
 }
 

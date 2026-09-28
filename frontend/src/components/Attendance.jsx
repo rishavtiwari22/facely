@@ -52,11 +52,18 @@ export default function Attendance({ user }) {
   const isDetecting = useRef(false);
   const recentDetections = useRef(new Set()); // Debounce map
   const faceHistory = useRef(new Map()); // trackId -> { frames: [], lastSeen: timestamp, student: obj }
+  const activeFacesRef = useRef(new Map());
+  const currentAudioRef = useRef(null);
+  const alreadyMarkedCountRef = useRef(new Map()); // Tracks repeated attempts
 
   // Update refs when state changes
   useEffect(() => {
     sessionRecordsRef.current = sessionRecords;
   }, [sessionRecords]);
+
+  useEffect(() => {
+    activeFacesRef.current = activeFaces;
+  }, [activeFaces]);
 
   // Initial Model Load
   useEffect(() => {
@@ -160,6 +167,51 @@ export default function Attendance({ user }) {
     }
   };
 
+  const playAudio = (type) => {
+    try {
+      // If a 'success' event happens, we MUST announce it immediately. 
+      // Stop any currently playing audio (like a long 'already marked' joke).
+      if (currentAudioRef.current && (!currentAudioRef.current.paused && !currentAudioRef.current.ended)) {
+        if (type === 'success') {
+          currentAudioRef.current.pause();
+          currentAudioRef.current.currentTime = 0;
+        } else {
+          return; // For non-success events, wait until current audio finishes
+        }
+      }
+
+      const audioFiles = {
+        success: [
+          '/audios/click.mp3'
+        ],
+        already_marked: [
+          '/audios/kitni_baar_attendance_lagayegi_cutie.mp3',
+          '/audios/Oye nakhre wali, ek_din_mein_do_baar_attendance_nahi_lagti.mp3'
+        ],
+        already_marked_too_many: [
+          '/audios/faaaa.mp3'
+        ],
+        time_over: [
+          '/audios/Oye_time_over_ho_gaya.mp3'
+        ]
+      };
+
+      let src = '';
+      if (audioFiles[type] && audioFiles[type].length > 0) {
+        const randomIndex = Math.floor(Math.random() * audioFiles[type].length);
+        src = audioFiles[type][randomIndex];
+      }
+
+      if (src) {
+        const audio = new Audio(src);
+        currentAudioRef.current = audio;
+        audio.play().catch(e => console.warn("Audio play blocked", e));
+      }
+    } catch (e) {
+      console.warn("Audio error", e);
+    }
+  };
+
   const playSuccessSound = () => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -194,22 +246,39 @@ export default function Attendance({ user }) {
       const osc = ctx.createOscillator();
       const gainNode = ctx.createGain();
 
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(150, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.2);
+      // Soft modern rejection double-tone (like a gentle "uh-oh")
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(300, ctx.currentTime);
+      osc.frequency.setValueAtTime(250, ctx.currentTime + 0.15);
 
       gainNode.gain.setValueAtTime(0, ctx.currentTime);
       gainNode.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.02);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
 
       osc.connect(gainNode);
       gainNode.connect(ctx.destination);
 
       osc.start();
-      osc.stop(ctx.currentTime + 0.3);
+      osc.stop(ctx.currentTime + 0.35);
     } catch (e) {
       console.warn("Audio Context not supported");
     }
+  };
+
+  const checkSlotTime = () => {
+    const currentSlot = campusConfig?.slots?.find(s => s.slotNumber === slot);
+    if (!currentSlot || !currentSlot.startTime || !currentSlot.endTime) return { isValid: true };
+    
+    const options = { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false };
+    const nowStr = new Intl.DateTimeFormat('en-GB', options).format(new Date());
+    
+    if (nowStr < currentSlot.startTime) {
+      return { isValid: false, message: `Too early! ${currentSlot.name} starts at ${currentSlot.startTime}` };
+    }
+    if (nowStr > currentSlot.endTime) {
+      return { isValid: false, message: `${currentSlot.name} ended at ${currentSlot.endTime}` };
+    }
+    return { isValid: true };
   };
 
   // (Manual Slot Selection replaces Automatic Time Window)
@@ -220,7 +289,7 @@ export default function Attendance({ user }) {
 
     const interval = setInterval(async () => {
       if (isDetecting.current) return;
-      if (!webcamRef.current || !webcamRef.current.video) return;
+      if (!webcamRef.current || !webcamRef.current.video || webcamRef.current.video.readyState !== 4) return;
 
       isDetecting.current = true;
       try {
@@ -234,7 +303,7 @@ export default function Attendance({ user }) {
           }
         }
 
-        const currentActiveFaces = new Map(activeFaces);
+        const currentActiveFaces = new Map(activeFacesRef.current);
         // Clear active faces that are no longer seen
         for (const [tId, data] of currentActiveFaces.entries()) {
           if (now - data.lastSeen > 1000 && data.state !== 'CONFIRMED' && data.state !== 'REJECTED' && data.state !== 'NO_MATCH') {
@@ -291,15 +360,49 @@ export default function Attendance({ user }) {
               const matchedStudent = trackData.frames.filter(f => f.student)[0].student; // get the student object
               activeFaceState.student = matchedStudent;
 
-              if (markedRecordsRef.current.includes(matchedStudent._id) || sessionRecordsRef.current.find(r => r.studentId === matchedStudent._id)) {
+              const timeCheck = checkSlotTime();
+              if (!timeCheck.isValid) {
+                 activeFaceState.state = 'NO_MATCH';
+                 activeFaceState.message = timeCheck.message;
+                 playAudio('time_over');
+                 
+                 setTimeout(() => {
+                   setActiveFaces(prev => {
+                     const newMap = new Map(prev);
+                     const face = newMap.get(bestTrackId);
+                     if (face) {
+                       face.state = 'COOLDOWN';
+                       newMap.set(bestTrackId, face);
+                     }
+                     return newMap;
+                   });
+                 }, 2000);
+                 
+                 if (activeFaceState.state !== 'COOLDOWN') {
+                    currentActiveFaces.set(bestTrackId, activeFaceState);
+                 } else {
+                    currentActiveFaces.delete(bestTrackId);
+                 }
+                 continue; // skip the rest
+              }
+
+              if (markedRecordsRef.current.includes(matchedStudent._id) || sessionRecordsRef.current.find(r => r.studentId === matchedStudent._id && r.slot === slot)) {
                  // Already marked/queued
+                 const attempts = (alreadyMarkedCountRef.current.get(matchedStudent._id) || 0) + 1;
+                 alreadyMarkedCountRef.current.set(matchedStudent._id, attempts);
+
                  // Just briefly show confirmed but no need to queue again
                  activeFaceState.state = 'CONFIRMED';
                  activeFaceState.message = 'Already Marked';
-                 playSuccessSound();
+                 
+                 if (attempts > 3) {
+                   playAudio('already_marked_too_many');
+                 } else {
+                   playAudio('already_marked');
+                 }
               } else {
                  activeFaceState.state = 'CONFIRMED';
-                 playSuccessSound();
+                 playAudio('success');
                  
                  // Queue
                  const newRecord = {
@@ -365,7 +468,7 @@ export default function Attendance({ user }) {
     }, 400);
 
     return () => clearInterval(interval);
-  }, [modelsLoaded, faceMatcher, students, cameraError, activeFaces, isCampusSelected, slot]);
+  }, [modelsLoaded, faceMatcher, students, cameraError, isCampusSelected, slot]);
 
   // Bulk Submit Handler
   const handleBulkSubmit = async (isAuto = false) => {
@@ -642,26 +745,35 @@ export default function Attendance({ user }) {
                           </>
                        );
                      } else if (face.state === 'CONFIRMED') {
-                       borderColor = 'border-emerald-500 border-solid bg-emerald-500/20';
+                       borderColor = 'border-emerald-500 border-solid bg-emerald-500/10';
                        innerUI = (
                           <motion.div 
-                             initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                             className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl shadow-xl p-3 flex flex-col items-center whitespace-nowrap border-2 border-emerald-500 z-50"
+                             initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                             className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-emerald-500/95 backdrop-blur-md rounded-2xl shadow-2xl px-5 py-3 flex flex-col items-center border border-emerald-400/50 z-50 w-[max-content] max-w-[90vw]"
                           >
-                             <CheckSquare className="w-8 h-8 text-emerald-500 mb-1" />
-                             <span className="font-bold text-slate-900 text-lg">{face.student?.name}</span>
-                             {face.message && <span className="text-xs text-emerald-600 font-bold">{face.message}</span>}
+                             <div className="flex items-center gap-2">
+                               <CheckSquare className="w-5 h-5 text-white" />
+                               <span className="font-bold text-white text-base sm:text-lg tracking-wide">{face.student?.name}</span>
+                             </div>
+                             {face.message && <span className="text-xs sm:text-sm text-emerald-100 font-bold mt-1">{face.message}</span>}
                           </motion.div>
                        );
                      } else if (face.state === 'NO_MATCH') {
-                       borderColor = 'border-rose-500 border-dashed bg-rose-500/20';
+                       borderColor = 'border-rose-500 border-dashed bg-rose-500/10';
                        innerUI = (
                           <motion.div 
-                             initial={{ x: -5 }} animate={{ x: [5, -5, 5, 0] }} transition={{ duration: 0.3 }}
-                             className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-rose-50 rounded-xl shadow-xl p-2 flex flex-col items-center border-2 border-rose-500 z-50"
+                             initial={{ x: -5, opacity: 0 }} animate={{ x: [5, -5, 5, 0], opacity: 1 }} transition={{ duration: 0.3 }}
+                             className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-rose-500/95 backdrop-blur-md rounded-2xl shadow-2xl px-5 py-3 flex flex-col items-center border border-rose-400/50 z-50 w-[max-content] max-w-[90vw] text-center"
                           >
-                             <X className="w-8 h-8 text-rose-500 mb-1" />
-                             <span className="font-bold text-rose-700 text-sm">Not Recognized</span>
+                             <div className="flex items-center gap-2">
+                               <X className="w-5 h-5 text-white" />
+                               <span className="font-bold text-white text-base sm:text-lg tracking-wide">
+                                 {face.student?.name || 'Not Recognized'}
+                               </span>
+                             </div>
+                             {face.message && (
+                                <span className="text-xs sm:text-sm text-rose-100 font-bold mt-1 max-w-[150px] sm:max-w-[200px] leading-tight break-words">{face.message}</span>
+                             )}
                           </motion.div>
                        );
                      }
@@ -778,6 +890,12 @@ export default function Attendance({ user }) {
                   .map(student => (
                     <div key={student._id} className="flex items-center justify-between p-4 hover:bg-indigo-50 rounded-2xl cursor-pointer transition-colors group mb-1"
                       onClick={() => {
+                        const timeCheck = checkSlotTime();
+                        if (!timeCheck.isValid) {
+                           toast(timeCheck.message, { icon: '⏰' });
+                           return;
+                        }
+
                         if (markedRecords.includes(student._id)) {
                           toast(`${student.name} is already marked in DB today.`, { icon: 'ℹ️' });
                           return;
